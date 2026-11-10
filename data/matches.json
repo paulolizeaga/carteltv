@@ -1,5 +1,5 @@
 {
-  "updated_at": "2026-11-10T13:12:23.735251+00:00",
+  "updated_at": "2026-11-10T13:18:42.057052+00:00",
   "timezone": "Europe/Madrid",
   "matches": [
     {
@@ -13,7 +13,7 @@
       "start": "2026-11-10T18:00Z",
       "date": "2026-11-10",
       "venue": "Txerloia, Azkoitia",
-      "channel": "ESPN+",
+      "channel": "",
       "status": "pre",
       "featured": true
     },
@@ -88,7 +88,7 @@
       "start": "2026-11-10T20:00Z",
       "date": "2026-11-10",
       "venue": "Mestalla Stadium, Manises",
-      "channel": "ESPN+",
+      "channel": "",
       "status": "pre",
       "featured": true
     }
