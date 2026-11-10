@@ -20,7 +20,7 @@ FOOTBALL={
 }
 S=requests.Session()
 S.headers.update({"User-Agent":"Mozilla/5.0 (compatible; CartelTV/1.0)","Accept":"text/html,application/json,*/*"})
-CHANNEL_RE=re.compile(r"(?i)\b(M\+\s*(?:LALIGA|Liga de Campeones|Champions|Vamos|Deportes)|Movistar(?:\s*Plus\+?|\s*Liga[^,|]*)?|DAZN(?:\s*LaLiga)?|La\s*1|Teledeporte|RTVE\s*Play|GOL(?:\s*Play)?|ETB\s*[124]|ETB1|ETB2|TVG|TV3|Esport\s*3|À\s*Punt|Aragón\s*Deporte|Canal\s*Sur|CMM\s*Play|IB3|TPA|Real\s*Madrid\s*TV|Barça\s*TV)\b")
+CHANNEL_RE=re.compile(r"(?i)\\b(M\\+\\s*(?:LALIGA|Liga de Campeones|Champions|Vamos|Deportes)|Movistar(?:\\s*Plus\\+?|\\s*Liga[^,|]*)?|DAZN(?:\\s*LaLiga)?|La\\s*1|Teledeporte|RTVE\\s*Play|GOL(?:\\s*Play)?|ETB\\s*[124]|ETB1|ETB2|TVG|TV3|Esport\\s*3|À\\s*Punt|Aragón\\s*Deporte|Canal\\s*Sur|CMM\\s*Play|IB3|TPA|Real\\s*Madrid\\s*TV|Barça\\s*(?:TV|One)|LALIGA\\s*TV\\s*HYPERMOTION|Primera\\s*Federación\\s*TV)\\b")
 
 def norm(s):
  s=unicodedata.normalize("NFKD",s or "").encode("ascii","ignore").decode().lower()
@@ -87,31 +87,34 @@ def fetch_leafs(day):
  return out
 
 def spanish_tv_index():
- """Read event-specific channels from the Spanish football TV guide."""
+ """Read individual fixture cards and their Spanish TV channels."""
  url="https://www.futbolenlatv.es/"
  r=S.get(url,timeout=30);r.raise_for_status()
  soup=BeautifulSoup(r.text,"html.parser")
  index=[]
- # Event rows/cards are the smallest containers that contain two team names and a TV channel.
+ competitions={"la liga ea sports","laliga hypermotion","segunda division","copa del rey","champions league","europa league","conference league","supercopa de espana","premier league","bundesliga","futbol hoy","futbol en la tv"}
  for node in soup.find_all(["article","li","tr","div"]):
   text=node.get_text(" ",strip=True)
-  if len(text)<15 or len(text)>1400:continue
+  if len(text)<15 or len(text)>650:continue
   channels=list(dict.fromkeys(x.strip() for x in CHANNEL_RE.findall(text)))
   if not channels:continue
-  imgs=node.find_all("img")
+  # Team names are linked individually on this guide. Exclude channel and competition links.
   names=[]
-  for img in imgs:
-   n=img.get("alt") or img.get("title") or ""
-   if n and norm(n):names.append(n)
-  links=[a.get_text(" ",strip=True) for a in node.find_all("a")]
-  names+= [x for x in links if x and not CHANNEL_RE.search(x)]
-  names=list(dict.fromkeys(names))
-  if len(names)<2:continue
-  # Keep just team-name candidates; channel and competition labels are excluded by requiring
-  # a pair with meaningful token overlap against a real fixture later.
-  index.append({"names":names,"channels":channels,"text":text})
- # Drop duplicate nested captures, keeping the shortest card for each team pair.
- return index
+  for link in node.find_all("a"):
+   label=link.get_text(" ",strip=True)
+   key=norm(label)
+   if not key or CHANNEL_RE.search(label) or key in competitions:continue
+   if len(key)>38:continue
+   if key not in [norm(x) for x in names]:names.append(label)
+  # A card with more than two team links is a parent container, not a single fixture.
+  if len(names)==2:
+   index.append({"names":names,"channels":channels,"text":text})
+ # Remove duplicate cards, retaining the shortest textual representation.
+ unique={}
+ for row in index:
+  key=tuple(sorted(norm(x) for x in row["names"]))
+  if key not in unique or len(row["text"])<len(unique[key]["text"]):unique[key]=row
+ return list(unique.values())
 
 def enrich_spanish_channels(matches):
  football=[m for m in matches if m["sport"]=="football"]
