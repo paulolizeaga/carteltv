@@ -202,8 +202,10 @@ def fetch_leafs_tv_networks():
                 continue
             opponent = re.sub(r"^(vs?\.?|@)\s*", "", cells[1], flags=re.I)
             opponent = re.sub(r"\s*\([^)]*\)", "", opponent).strip()
+            # The page also lists final scores in this column for completed games.
+            # Only accept recognizable broadcaster names, never a score/result.
             network = cells[3].strip()
-            if network and network.lower() not in ("—", "-", "tbd", "n/a"):
+            if re.search(r"\\b(TSN\\s*\\d*|Sportsnet(?:\\+|\\s+Ontario)?|Prime(?:\\s+Video)?|CBC|NHL\\s+Network)\\b", network, re.I):
                 rows.append({"date": game_date, "opponent": opponent, "channel": network})
     print(f"[Leafs schedule] {len(rows)} partidos con cadena publicada")
     return rows
@@ -247,8 +249,8 @@ def enrich_leafs_from_schedule(matches):
             if logo:
                 match["channel_logo"] = logo
             assigned += 1
-            print(f"[Leafs schedule] {match['home']} - {match['away']}: {match['channel']}")
-    print(f"[Leafs schedule] Canal asignado a {assigned}/{len(leafs)} partidos")
+            print(f"[Leafs schedule] {match['home']} - {match['away']}: {match['channel']} (logo: {'sí' if match.get('channel_logo') else 'no'})")
+    print(f"[Leafs schedule] Canal asignado a {assigned}/{len(leafs)} partidos; logos EPG disponibles: {len(EPG_CHANNEL_LOGOS)}")
 
 
 def xmltv_datetime(value):
@@ -295,18 +297,19 @@ def read_epg_programmes():
                 channel_id = element.attrib.get("id", "")
                 names = [
                     (child.text or "").strip()
-                    for child in element
+                    for child in element.iter()
                     if child.tag.rsplit("}", 1)[-1] == "display-name" and (child.text or "").strip()
                 ]
                 icons = [
                     child.attrib.get("src", "").strip()
-                    for child in element
+                    for child in element.iter()
                     if child.tag.rsplit("}", 1)[-1] == "icon" and child.attrib.get("src")
                 ]
                 if channel_id and names:
                     channels[channel_id] = {"name": names[0], "logo": icons[0] if icons else ""}
-                    if icons:
-                        EPG_CHANNEL_LOGOS[names[0]] = icons[0]
+                    for channel_name in names:
+                        if icons:
+                            EPG_CHANNEL_LOGOS[channel_name] = icons[0]
                 element.clear()
             elif tag == "programme":
                 element.clear()
@@ -375,7 +378,8 @@ def enrich_channels_from_epg(matches):
                 match["channel_logo"] = candidates[0][2]["channel_logo"]
             assigned += 1
             print(f"[EPG] {match['home']} - {match['away']}: {match['channel']}")
-    print(f"[EPG] Canal principal asignado a {assigned}/{len(football)} partidos")
+    with_logo = sum(1 for match in football if match.get("channel_logo"))
+    print(f"[EPG] Canal principal asignado a {assigned}/{len(football)} partidos; logos mostrados: {with_logo}; logos EPG disponibles: {len(EPG_CHANNEL_LOGOS)}")
 
 
 def main():
