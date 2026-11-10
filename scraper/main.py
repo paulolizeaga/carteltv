@@ -332,6 +332,13 @@ def read_epg_programmes():
             elif tag == "programme":
                 element.clear()
 
+        leafs_logo_channels = [
+            name for name, url in EPG_CHANNEL_LOGOS.items()
+            if url and any(term in norm(name) for term in ("prime", "sportsnet", "tsn"))
+        ]
+        print(f"[EPG NHL] Canales candidatos con logo: {leafs_logo_channels[:80]}")
+        print(f"[EPG NHL] Total candidatos Prime/Sportsnet/TSN: {len(leafs_logo_channels)}")
+
         # Second pass: only programme rows for our Spanish channel shortlist.
         for _, element in ET.iterparse(temp.name, events=("end",)):
             if element.tag.rsplit("}", 1)[-1] != "programme":
