@@ -205,7 +205,7 @@ def fetch_leafs_tv_networks():
             # The page also lists final scores in this column for completed games.
             # Only accept recognizable broadcaster names, never a score/result.
             network = cells[3].strip()
-            if re.search(r"\\b(TSN\\s*\\d*|Sportsnet(?:\\+|\\s+Ontario)?|Prime(?:\\s+Video)?|CBC|NHL\\s+Network)\\b", network, re.I):
+            if re.search(r"\b(TSN\s*\\d*|Sportsnet(?:\+|\s+Ontario)?|Prime(?:\s+Video)?|CBC|NHL\s+Network)\b", network, re.I):
                 rows.append({"date": game_date, "opponent": opponent, "channel": network})
     print(f"[Leafs schedule] {len(rows)} partidos con cadena publicada")
     return rows
