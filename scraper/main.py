@@ -276,7 +276,7 @@ def find_leafs_epg_logo(network):
     elif key.startswith("sportsnet"):
         brand = "sportsnet"
     elif key.startswith("tsn"):
-        brand = "tsn4" if re.search(r"tsn\\s*4", norm(network)) else "tsn"
+        brand = "tsn4" if "tsn4" in key else "tsn"
     else:
         return ""
 
