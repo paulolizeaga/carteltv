@@ -1,5 +1,96 @@
 {
-  "updated_at": null,
+  "updated_at": "2026-11-10T13:11:18.480257+00:00",
   "timezone": "Europe/Madrid",
-  "matches": []
+  "matches": [
+    {
+      "id": "espn-401928514",
+      "sport": "football",
+      "competition": "Copa del Rey",
+      "home": "Anaitasuna",
+      "away": "Alavés",
+      "home_logo": "",
+      "away_logo": "https://a.espncdn.com/i/teamlogos/soccer/500/96.png",
+      "start": "2026-11-10T18:00Z",
+      "date": "2026-11-10",
+      "venue": "Txerloia, Azkoitia",
+      "channel": "ESPN+",
+      "status": "pre",
+      "featured": true
+    },
+    {
+      "id": "espn-401928516",
+      "sport": "football",
+      "competition": "Copa del Rey",
+      "home": "CD Pamplona",
+      "away": "Eibar",
+      "home_logo": "",
+      "away_logo": "https://a.espncdn.com/i/teamlogos/soccer/500/3752.png",
+      "start": "2026-11-10T18:00Z",
+      "date": "2026-11-10",
+      "venue": "Polideportivo Valle Aranguren, Valle de Aranguren",
+      "channel": "",
+      "status": "pre",
+      "featured": true
+    },
+    {
+      "id": "espn-401928519",
+      "sport": "football",
+      "competition": "Copa del Rey",
+      "home": "Amorebieta",
+      "away": "UD Logroñés",
+      "home_logo": "https://a.espncdn.com/i/teamlogos/soccer/500/12587.png",
+      "away_logo": "https://a.espncdn.com/i/teamlogos/soccer/500/7206.png",
+      "start": "2026-11-10T19:00Z",
+      "date": "2026-11-10",
+      "venue": "Urritxe, Amorebieta",
+      "channel": "",
+      "status": "pre",
+      "featured": true
+    },
+    {
+      "id": "espn-401928528",
+      "sport": "football",
+      "competition": "Copa del Rey",
+      "home": "Mijas Las Lagunas",
+      "away": "Real Jaen CF",
+      "home_logo": "",
+      "away_logo": "",
+      "start": "2026-11-10T19:00Z",
+      "date": "2026-11-10",
+      "venue": "Francisco Muñoz Pérez, Estepona",
+      "channel": "",
+      "status": "pre",
+      "featured": true
+    },
+    {
+      "id": "espn-401928550",
+      "sport": "football",
+      "competition": "Copa del Rey",
+      "home": "Trival Valderas",
+      "away": "Leganés",
+      "home_logo": "",
+      "away_logo": "https://a.espncdn.com/i/teamlogos/soccer/500/17534.png",
+      "start": "2026-11-10T19:00Z",
+      "date": "2026-11-10",
+      "venue": "Estadio Municipal de Butarque, Leganés, Madrid",
+      "channel": "",
+      "status": "pre",
+      "featured": true
+    },
+    {
+      "id": "espn-401928504",
+      "sport": "football",
+      "competition": "Copa del Rey",
+      "home": "Tavernes de la Valldigna",
+      "away": "Valencia",
+      "home_logo": "",
+      "away_logo": "https://a.espncdn.com/i/teamlogos/soccer/500/94.png",
+      "start": "2026-11-10T20:00Z",
+      "date": "2026-11-10",
+      "venue": "Mestalla Stadium, Manises",
+      "channel": "ESPN+",
+      "status": "pre",
+      "featured": true
+    }
+  ]
 }
