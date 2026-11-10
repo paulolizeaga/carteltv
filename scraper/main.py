@@ -238,9 +238,12 @@ def enrich_leafs_from_schedule(matches):
                 best = (score, row)
         if best:
             match["channel"] = best[1]["channel"]
-            network_key = norm(best[1]["channel"])
+            network_key = re.sub(r"\\s+", "", norm(best[1]["channel"]))
+            brand_key = "sportsnet" if "sportsnet" in network_key else "tsn" if "tsn" in network_key else network_key
             logo = next((url for name, url in EPG_CHANNEL_LOGOS.items()
-                         if url and (network_key in norm(name) or norm(name) in network_key)), "")
+                         if url and brand_key in re.sub(r"\\s+", "", norm(name))
+                         and (not re.search(r"\\d", network_key)
+                              or re.search(r"\\d", network_key).group() in re.sub(r"\\s+", "", norm(name)))), "")
             if logo:
                 match["channel_logo"] = logo
             assigned += 1
@@ -340,8 +343,6 @@ def read_epg_programmes():
 
 def enrich_channels_from_epg(matches):
     football = [match for match in matches if match["sport"] == "football"]
-    if not football:
-        return
     try:
         programmes = list(read_epg_programmes())
     except Exception as exc:
