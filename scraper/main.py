@@ -48,7 +48,7 @@ S.headers.update({
 
 def norm(value: str) -> str:
     value = unicodedata.normalize("NFKD", value or "").encode("ascii", "ignore").decode().lower()
-    value = re.sub(r"\\b(fc|cf|club|de|the)\\b", " ", value)
+    value = re.sub(r"\b(fc|cf|club|de|the)\b", " ", value)
     return re.sub(r"[^a-z0-9]+", " ", value).strip()
 
 
