@@ -8,7 +8,7 @@ import re
 import tempfile
 import unicodedata
 import xml.etree.ElementTree as ET
-from datetime import datetime, timezone
+from datetime import datetime, timezone, timedelta
 from difflib import SequenceMatcher
 from pathlib import Path
 from zoneinfo import ZoneInfo
@@ -183,7 +183,8 @@ def read_epg_programmes():
         channels = {}
         # First pass: channel IDs -> human-readable display names.
         for _, element in ET.iterparse(temp.name, events=("end",)):
-            if element.tag.rsplit("}", 1)[-1] == "channel":
+            tag = element.tag.rsplit("}", 1)[-1]
+            if tag == "channel":
                 channel_id = element.attrib.get("id", "")
                 names = [
                     (child.text or "").strip()
@@ -192,6 +193,8 @@ def read_epg_programmes():
                 ]
                 if channel_id and names:
                     channels[channel_id] = names[0]
+                element.clear()
+            elif tag == "programme":
                 element.clear()
 
         # Second pass: only programme rows for our Spanish channel shortlist.
@@ -228,22 +231,21 @@ def enrich_channels_from_epg(matches):
     try:
         programmes = list(read_epg_programmes())
     except Exception as exc:
-        print(f"[EPG] No se pudo leer gui atv.xml: {exc}")
+        print(f"[EPG] No se pudo leer guiatv.xml: {exc}")
         return
 
     assigned = 0
     for match in football:
-        kickoff = xmltv_datetime(
-            datetime.fromisoformat(match["start"].replace("Z", "+00:00")).strftime("%Y%m%d%H%M%S %z")
-        ) if match.get("start") else None
-        if not kickoff:
+        try:
+            kickoff = datetime.fromisoformat(match["start"].replace("Z", "+00:00"))
+        except (TypeError, ValueError):
             continue
         candidates = []
         for programme in programmes:
             # Sports broadcasts commonly start before kick-off; allow a 90-minute lead-in.
-            if programme["start"] > kickoff.replace(minute=kickoff.minute) + __import__("datetime").timedelta(minutes=30):
+            if programme["start"] > kickoff + timedelta(minutes=30):
                 continue
-            if programme["stop"] and programme["stop"] < kickoff - __import__("datetime").timedelta(minutes=15):
+            if programme["stop"] and programme["stop"] < kickoff - timedelta(minutes=15):
                 continue
             text = programme["text"]
             home_score = similarity(match["home"], text)
