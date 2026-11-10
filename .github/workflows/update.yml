@@ -4,6 +4,9 @@ on:
   push:
     paths:
       - "scraper/main.py"
+      - "index.html"
+      - "app.js"
+      - "style.css"
       - ".github/workflows/update.yml"
   schedule:
     - cron: "*/30 * * * *"
