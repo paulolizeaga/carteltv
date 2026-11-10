@@ -1,154 +1,286 @@
 #!/usr/bin/env python3
-"""CartelTV: ESPN supplies fixtures; FutbolenlaTV supplies Spanish TV listings."""
+"""CartelTV: ESPN fixtures enriched with the Spanish XMLTV guide."""
 from __future__ import annotations
-import json, re, unicodedata
+
+import gzip
+import json
+import re
+import tempfile
+import unicodedata
+import xml.etree.ElementTree as ET
 from datetime import datetime, timezone
 from difflib import SequenceMatcher
 from pathlib import Path
 from zoneinfo import ZoneInfo
+
 import requests
-from bs4 import BeautifulSoup
 
-ROOT=Path(__file__).resolve().parents[1]
-OUT=ROOT/"data"/"matches.json"
-MADRID=ZoneInfo("Europe/Madrid")
-ESPN="https://site.api.espn.com/apis/site/v2/sports"
-FOOTBALL={
- "esp.1":"LaLiga","esp.2":"Segunda División","esp.copa_del_rey":"Copa del Rey",
- "esp.super_cup":"Supercopa de España","uefa.champions":"Champions League",
- "uefa.europa":"Europa League","uefa.europa.conf":"Conference League",
+ROOT = Path(__file__).resolve().parents[1]
+OUT = ROOT / "data" / "matches.json"
+MADRID = ZoneInfo("Europe/Madrid")
+ESPN = "https://site.api.espn.com/apis/site/v2/sports"
+XMLTV_URL = "https://raw.githubusercontent.com/davidmuma/EPG_dobleM/master/guiatv.xml"
+
+FOOTBALL = {
+    "esp.1": "LaLiga",
+    "esp.2": "Segunda División",
+    "esp.copa_del_rey": "Copa del Rey",
+    "esp.super_cup": "Supercopa de España",
+    "uefa.champions": "Champions League",
+    "uefa.europa": "Europa League",
+    "uefa.europa.conf": "Conference League",
 }
-S=requests.Session()
-S.headers.update({"User-Agent":"Mozilla/5.0 (compatible; CartelTV/1.0)","Accept":"text/html,application/json,*/*"})
-CHANNEL_RE=re.compile(r"(?i)\\b(M\\+\\s*(?:LALIGA|Liga de Campeones|Champions|Vamos|Deportes)|Movistar(?:\\s*Plus\\+?|\\s*Liga[^,|]*)?|DAZN(?:\\s*LaLiga)?|La\\s*1|Teledeporte|RTVE\\s*Play|GOL(?:\\s*Play)?|ETB\\s*[124]|ETB1|ETB2|TVG|TV3|Esport\\s*3|À\\s*Punt|Aragón\\s*Deporte|Canal\\s*Sur|CMM\\s*Play|IB3|TPA|Real\\s*Madrid\\s*TV|Barça\\s*(?:TV|One)|LALIGA\\s*TV\\s*HYPERMOTION|Primera\\s*Federación\\s*TV)\\b")
 
-def norm(s):
- s=unicodedata.normalize("NFKD",s or "").encode("ascii","ignore").decode().lower()
- s=re.sub(r"\b(fc|cf|club|de|the)\b"," ",s)
- return re.sub(r"[^a-z0-9]+"," ",s).strip()
+# Only Spanish broadcasters relevant to live football. Lower rank = preferred.
+CHANNEL_PRIORITY = [
+    "movistar laliga", "m laliga", "dazn laliga", "laliga tv",
+    "movistar liga de campeones", "m liga de campeones", "dazn 1",
+    "movistar plus", "movistar+", "la 1", "teledeporte", "rtve play",
+    "gol play", "gol", "etb1", "etb2", "tv3", "esport3", "tv galicia",
+    "tvg", "canal sur", "à punt", "a punt", "ib3",
+]
+S = requests.Session()
+S.headers.update({
+    "User-Agent": "Mozilla/5.0 (compatible; CartelTV/1.0)",
+    "Accept": "application/xml,text/xml,application/json,*/*",
+})
 
-def similarity(a,b):
- a,b=norm(a),norm(b)
- if not a or not b:return 0
- if a in b or b in a:return .96
- return SequenceMatcher(None,a,b).ratio()
 
-def get_json(url):
- r=S.get(url,timeout=25);r.raise_for_status();return r.json()
+def norm(value: str) -> str:
+    value = unicodedata.normalize("NFKD", value or "").encode("ascii", "ignore").decode().lower()
+    value = re.sub(r"\\b(fc|cf|club|de|the)\\b", " ", value)
+    return re.sub(r"[^a-z0-9]+", " ", value).strip()
 
-def espn_event(event,label,sport="football"):
- comps=event.get("competitions") or []; comp=comps[0] if comps else {}
- teams=comp.get("competitors") or []
- home=next((x for x in teams if x.get("homeAway")=="home"),None)
- away=next((x for x in teams if x.get("homeAway")=="away"),None)
- if not home and len(teams)>=2:home,away=teams[:2]
- if not home or not away:return None
- def team(x):
-  t=x.get("team") or {};return t.get("displayName") or t.get("name") or "—",t.get("logo") or ""
- hn,hl=team(home);an,al=team(away)
- venue=(comp.get("venue") or {}).get("fullName") or ""
- addr=(comp.get("venue") or {}).get("address") or {}
- if isinstance(addr,dict) and addr.get("city"):venue+=", "+addr["city"]
- start=event.get("date") or comp.get("date")
- status=((event.get("status") or {}).get("type") or {}).get("state","pre")
- broadcasts=[]
- for c in comps:
-  for b in c.get("broadcasts") or []:
-   broadcasts.extend(str(x) for x in (b.get("names") or []) if x)
- return {"id":"espn-"+str(event.get("id","")),"sport":sport,"competition":label,
-  "home":hn,"away":an,"home_logo":hl,"away_logo":al,"start":start,
-  "date":start[:10] if start else "","venue":venue,"channel":"",
-  "status":status,"featured":label in ("Champions League","Copa del Rey","Supercopa de España")}
+
+def similarity(a: str, b: str) -> float:
+    a, b = norm(a), norm(b)
+    if not a or not b:
+        return 0.0
+    if a in b or b in a:
+        return 0.98
+    # Token overlap helps when the EPG adds prefixes such as "Deportivo" or "Real".
+    aa, bb = set(a.split()), set(b.split())
+    overlap = len(aa & bb) / max(1, min(len(aa), len(bb)))
+    return max(SequenceMatcher(None, a, b).ratio(), overlap * 0.92)
+
+
+def get_json(url: str):
+    response = S.get(url, timeout=25)
+    response.raise_for_status()
+    return response.json()
+
+
+def espn_event(event, label, sport="football"):
+    competitions = event.get("competitions") or []
+    comp = competitions[0] if competitions else {}
+    teams = comp.get("competitors") or []
+    home = next((x for x in teams if x.get("homeAway") == "home"), None)
+    away = next((x for x in teams if x.get("homeAway") == "away"), None)
+    if not home and len(teams) >= 2:
+        home, away = teams[:2]
+    if not home or not away:
+        return None
+
+    def team(item):
+        data = item.get("team") or {}
+        return data.get("displayName") or data.get("name") or "—", data.get("logo") or ""
+
+    home_name, home_logo = team(home)
+    away_name, away_logo = team(away)
+    venue = (comp.get("venue") or {}).get("fullName") or ""
+    address = (comp.get("venue") or {}).get("address") or {}
+    if isinstance(address, dict) and address.get("city"):
+        venue += ", " + address["city"]
+    start = event.get("date") or comp.get("date")
+    status = ((event.get("status") or {}).get("type") or {}).get("state", "pre")
+    return {
+        "id": "espn-" + str(event.get("id", "")),
+        "sport": sport, "competition": label,
+        "home": home_name, "away": away_name,
+        "home_logo": home_logo, "away_logo": away_logo,
+        "start": start, "date": start[:10] if start else "",
+        "venue": venue, "channel": "", "status": status,
+        "featured": label in ("Champions League", "Copa del Rey", "Supercopa de España"),
+    }
+
 
 def fetch_football(day):
- out=[]
- for league,label in FOOTBALL.items():
-  try:
-   payload=get_json(f"{ESPN}/soccer/{league}/scoreboard?dates={day}&limit=100")
-   for e in payload.get("events",[]):
-    m=espn_event(e,label)
-    if m:out.append(m)
-   print(f"[ESPN] {label}: {len(payload.get('events',[]))}")
-  except Exception as e:print(f"[ESPN] {label}: {e}")
- return out
+    output = []
+    for league, label in FOOTBALL.items():
+        try:
+            payload = get_json(f"{ESPN}/soccer/{league}/scoreboard?dates={day}&limit=100")
+            for event in payload.get("events", []):
+                match = espn_event(event, label)
+                if match:
+                    output.append(match)
+            print(f"[ESPN] {label}: {len(payload.get('events', []))}")
+        except Exception as exc:
+            print(f"[ESPN] {label}: {exc}")
+    return output
+
 
 def fetch_leafs(day):
- try:events=get_json(f"{ESPN}/hockey/nhl/scoreboard?dates={day}&limit=100").get("events",[])
- except Exception as e:print("[NHL]",e);return []
- out=[]
- for e in events:
-  m=espn_event(e,"NHL","nhl")
-  if not m or "toronto maple leafs" not in norm(m["home"]+" "+m["away"]):continue
-  # For NHL, keep only Canadian national/regional rights explicitly named by ESPN.
-  comps=e.get("competitions") or []
-  names=[str(n) for c in comps for b in (c.get("broadcasts") or []) for n in (b.get("names") or [])]
-  m["channel"]=" / ".join(dict.fromkeys(n for n in names if re.search(r"TSN|Sportsnet",n,re.I)))
-  m["featured"]=True;out.append(m)
- return out
+    try:
+        events = get_json(f"{ESPN}/hockey/nhl/scoreboard?dates={day}&limit=100").get("events", [])
+    except Exception as exc:
+        print("[NHL]", exc)
+        return []
+    output = []
+    for event in events:
+        match = espn_event(event, "NHL", "nhl")
+        if not match or "toronto maple leafs" not in norm(match["home"] + " " + match["away"]):
+            continue
+        competitions = event.get("competitions") or []
+        names = [
+            str(name)
+            for comp in competitions
+            for broadcast in (comp.get("broadcasts") or [])
+            for name in (broadcast.get("names") or [])
+        ]
+        match["channel"] = " / ".join(dict.fromkeys(
+            name for name in names if re.search(r"TSN|Sportsnet", name, re.I)
+        ))
+        match["featured"] = True
+        output.append(match)
+    return output
 
-def spanish_tv_index():
- """Read individual fixture cards and their Spanish TV channels."""
- url="https://www.futbolenlatv.es/"
- r=S.get(url,timeout=30);r.raise_for_status()
- soup=BeautifulSoup(r.text,"html.parser")
- index=[]
- competitions={"la liga ea sports","laliga hypermotion","segunda division","copa del rey","champions league","europa league","conference league","supercopa de espana","premier league","bundesliga","futbol hoy","futbol en la tv"}
- for node in soup.find_all(["article","li","tr","div"]):
-  text=node.get_text(" ",strip=True)
-  if len(text)<15 or len(text)>650:continue
-  channels=list(dict.fromkeys(x.strip() for x in CHANNEL_RE.findall(text)))
-  if not channels:continue
-  # Team names are linked individually on this guide. Exclude channel and competition links.
-  names=[]
-  for link in node.find_all("a"):
-   label=link.get_text(" ",strip=True)
-   key=norm(label)
-   if not key or CHANNEL_RE.search(label) or key in competitions:continue
-   if len(key)>38:continue
-   if key not in [norm(x) for x in names]:names.append(label)
-  # A card with more than two team links is a parent container, not a single fixture.
-  if len(names)==2:
-   index.append({"names":names,"channels":channels,"text":text})
- # Remove duplicate cards, retaining the shortest textual representation.
- unique={}
- for row in index:
-  key=tuple(sorted(norm(x) for x in row["names"]))
-  if key not in unique or len(row["text"])<len(unique[key]["text"]):unique[key]=row
- return list(unique.values())
 
-def enrich_spanish_channels(matches):
- football=[m for m in matches if m["sport"]=="football"]
- if not football:return
- try:index=spanish_tv_index()
- except Exception as e:
-  print("[TV guide] No se pudo leer futbolenlatv.es:",e);return
- for m in football:
-  best=None;best_score=0
-  for row in index:
-   # Evaluate all candidate team-name pairs from a guide row.
-   names=row["names"]
-   hs=max((similarity(m["home"],n) for n in names),default=0)
-   aw=max((similarity(m["away"],n) for n in names),default=0)
-   score=(hs+aw)/2
-   if hs>=.68 and aw>=.68 and score>best_score:
-    best,best_score=row,score
-  if best:
-   m["channel"]=" / ".join(best["channels"])
-   print(f"[TV guide] {m['home']} - {m['away']}: {m['channel']} ({best_score:.2f})")
+def xmltv_datetime(value):
+    if not value:
+        return None
+    value = value.strip()
+    for fmt in ("%Y%m%d%H%M%S %z", "%Y%m%d%H%M %z", "%Y%m%d%H%M%S"):
+        try:
+            parsed = datetime.strptime(value, fmt)
+            return parsed.replace(tzinfo=timezone.utc) if parsed.tzinfo is None else parsed
+        except ValueError:
+            pass
+    return None
+
+
+def channel_rank(channel_name):
+    key = norm(channel_name)
+    for rank, preferred in enumerate(CHANNEL_PRIORITY):
+        if norm(preferred) in key or key in norm(preferred):
+            return rank
+    return None
+
+
+def read_epg_programmes():
+    """Stream the XMLTV feed to disk, then yield only Spanish sports-channel programmes."""
+    with tempfile.NamedTemporaryFile(prefix="carteltv-epg-", suffix=".xml") as temp:
+        response = S.get(XMLTV_URL, timeout=90, stream=True)
+        response.raise_for_status()
+        response.raw.decode_content = True
+        total = 0
+        for chunk in response.iter_content(chunk_size=1024 * 1024):
+            if chunk:
+                temp.write(chunk)
+                total += len(chunk)
+        temp.flush()
+        print(f"[EPG] Descargados {total / 1024 / 1024:.1f} MB")
+
+        channels = {}
+        # First pass: channel IDs -> human-readable display names.
+        for _, element in ET.iterparse(temp.name, events=("end",)):
+            if element.tag.rsplit("}", 1)[-1] == "channel":
+                channel_id = element.attrib.get("id", "")
+                names = [
+                    (child.text or "").strip()
+                    for child in element
+                    if child.tag.rsplit("}", 1)[-1] == "display-name" and (child.text or "").strip()
+                ]
+                if channel_id and names:
+                    channels[channel_id] = names[0]
+                element.clear()
+
+        # Second pass: only programme rows for our Spanish channel shortlist.
+        for _, element in ET.iterparse(temp.name, events=("end",)):
+            if element.tag.rsplit("}", 1)[-1] != "programme":
+                continue
+            channel_id = element.attrib.get("channel", "")
+            channel_name = channels.get(channel_id, "")
+            rank = channel_rank(channel_name)
+            if rank is not None:
+                values = {}
+                for child in element:
+                    tag = child.tag.rsplit("}", 1)[-1]
+                    if tag in ("title", "sub-title", "desc"):
+                        values[tag] = " ".join((child.text or "").split())
+                start = xmltv_datetime(element.attrib.get("start"))
+                stop = xmltv_datetime(element.attrib.get("stop"))
+                title = " | ".join(values.get(key, "") for key in ("title", "sub-title", "desc") if values.get(key))
+                if start and title:
+                    yield {
+                        "channel": channel_name,
+                        "rank": rank,
+                        "start": start,
+                        "stop": stop,
+                        "text": title,
+                    }
+            element.clear()
+
+
+def enrich_channels_from_epg(matches):
+    football = [match for match in matches if match["sport"] == "football"]
+    if not football:
+        return
+    try:
+        programmes = list(read_epg_programmes())
+    except Exception as exc:
+        print(f"[EPG] No se pudo leer gui atv.xml: {exc}")
+        return
+
+    assigned = 0
+    for match in football:
+        kickoff = xmltv_datetime(
+            datetime.fromisoformat(match["start"].replace("Z", "+00:00")).strftime("%Y%m%d%H%M%S %z")
+        ) if match.get("start") else None
+        if not kickoff:
+            continue
+        candidates = []
+        for programme in programmes:
+            # Sports broadcasts commonly start before kick-off; allow a 90-minute lead-in.
+            if programme["start"] > kickoff.replace(minute=kickoff.minute) + __import__("datetime").timedelta(minutes=30):
+                continue
+            if programme["stop"] and programme["stop"] < kickoff - __import__("datetime").timedelta(minutes=15):
+                continue
+            text = programme["text"]
+            home_score = similarity(match["home"], text)
+            away_score = similarity(match["away"], text)
+            if home_score >= 0.78 and away_score >= 0.78:
+                candidates.append((programme["rank"], home_score + away_score, programme))
+        if candidates:
+            # Main Spanish broadcaster first; if tied, choose the strongest team-name match.
+            candidates.sort(key=lambda item: (item[0], -item[1]))
+            match["channel"] = candidates[0][2]["channel"]
+            assigned += 1
+            print(f"[EPG] {match['home']} - {match['away']}: {match['channel']}")
+    print(f"[EPG] Canal principal asignado a {assigned}/{len(football)} partidos")
+
 
 def main():
- now=datetime.now(MADRID);day=now.strftime("%Y%m%d")
- matches=fetch_football(day)+fetch_leafs(day)
- enrich_spanish_channels(matches)
- # Keep the Madrid calendar day, not the UTC date supplied by ESPN.
- filtered=[]
- for m in matches:
-  try:
-   if m.get("start") and datetime.fromisoformat(m["start"].replace("Z","+00:00")).astimezone(MADRID).date()==now.date():filtered.append(m)
-  except ValueError:continue
- filtered.sort(key=lambda x:x.get("start") or "")
- OUT.parent.mkdir(parents=True,exist_ok=True)
- OUT.write_text(json.dumps({"updated_at":datetime.now(timezone.utc).isoformat(),"timezone":"Europe/Madrid","matches":filtered},ensure_ascii=False,indent=2)+"\n",encoding="utf-8")
- print(f"[done] {len(filtered)} eventos guardados")
+    now = datetime.now(MADRID)
+    day = now.strftime("%Y%m%d")
+    matches = fetch_football(day) + fetch_leafs(day)
+    enrich_channels_from_epg(matches)
 
-if __name__=="__main__":main()
+    filtered = []
+    for match in matches:
+        try:
+            if match.get("start") and datetime.fromisoformat(match["start"].replace("Z", "+00:00")).astimezone(MADRID).date() == now.date():
+                filtered.append(match)
+        except ValueError:
+            continue
+    filtered.sort(key=lambda item: item.get("start") or "")
+    OUT.parent.mkdir(parents=True, exist_ok=True)
+    OUT.write_text(json.dumps({
+        "updated_at": datetime.now(timezone.utc).isoformat(),
+        "timezone": "Europe/Madrid",
+        "matches": filtered,
+    }, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+    print(f"[done] {len(filtered)} eventos guardados")
+
+
+if __name__ == "__main__":
+    main()
