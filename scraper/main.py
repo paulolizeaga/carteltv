@@ -14,10 +14,14 @@ from pathlib import Path
 from zoneinfo import ZoneInfo
 
 import requests
+from bs4 import BeautifulSoup
 
 ROOT = Path(__file__).resolve().parents[1]
 OUT = ROOT / "data" / "matches.json"
 MADRID = ZoneInfo("Europe/Madrid")
+TORONTO = ZoneInfo("America/Toronto")
+EPG_CHANNEL_LOGOS = {}
+LEAFS_SCHEDULE_URL = "https://mapleleafshotstove.com/schedule/"
 ESPN = "https://site.api.espn.com/apis/site/v2/sports"
 XMLTV_URL = "https://raw.githubusercontent.com/davidmuma/EPG_dobleM/master/guiatv.xml"
 
@@ -166,6 +170,84 @@ def fetch_leafs(day):
     return output
 
 
+
+def fetch_leafs_tv_networks():
+    """Read explicitly published TV networks from Maple Leafs Hot Stove."""
+    try:
+        response = S.get(LEAFS_SCHEDULE_URL, timeout=30)
+        response.raise_for_status()
+        soup = BeautifulSoup(response.text, "html.parser")
+    except Exception as exc:
+        print(f"[Leafs schedule] No se pudo consultar la programación: {exc}")
+        return []
+
+    now = datetime.now(TORONTO)
+    season_start_year = now.year if now.month >= 7 else now.year - 1
+    rows = []
+    for table in soup.find_all("table"):
+        for tr in table.find_all("tr"):
+            cells = [cell.get_text(" ", strip=True) for cell in tr.find_all(["th", "td"])]
+            if len(cells) < 4 or not cells[0] or not cells[1]:
+                continue
+            date_match = re.search(r"(?:Mon|Tue|Wed|Thu|Thur|Fri|Sat|Sun)\w*,?\s+([A-Za-z]{3})\s+(\d{1,2})", cells[0], re.I)
+            if not date_match:
+                date_match = re.search(r"([A-Za-z]{3})\s+(\d{1,2})", cells[0], re.I)
+            if not date_match:
+                continue
+            try:
+                month = datetime.strptime(date_match.group(1), "%b").month
+                year = season_start_year if month >= 7 else season_start_year + 1
+                game_date = datetime(year, month, int(date_match.group(2))).date()
+            except ValueError:
+                continue
+            opponent = re.sub(r"^(vs?\.?|@)\s*", "", cells[1], flags=re.I)
+            opponent = re.sub(r"\s*\([^)]*\)", "", opponent).strip()
+            network = cells[3].strip()
+            if network and network.lower() not in ("—", "-", "tbd", "n/a"):
+                rows.append({"date": game_date, "opponent": opponent, "channel": network})
+    print(f"[Leafs schedule] {len(rows)} partidos con cadena publicada")
+    return rows
+
+
+def enrich_leafs_from_schedule(matches):
+    leafs = [m for m in matches if m["sport"] == "nhl"]
+    if not leafs:
+        return
+    schedule = fetch_leafs_tv_networks()
+    aliases = {
+        "nyi": "new york islanders", "nyr": "new york rangers",
+        "mtl": "montreal canadiens", "tb": "tampa bay lightning",
+        "la": "los angeles kings", "sj": "san jose sharks",
+        "vgk": "vegas golden knights", "wsh": "washington capitals",
+        "col": "colorado avalanche", "utah": "utah mammoth",
+    }
+    assigned = 0
+    for match in leafs:
+        try:
+            game_date = datetime.fromisoformat(match["start"].replace("Z", "+00:00")).astimezone(TORONTO).date()
+        except (TypeError, ValueError):
+            continue
+        opponent_name = match["away"] if "toronto maple leafs" in norm(match["home"]) else match["home"]
+        best = None
+        for row in schedule:
+            if row["date"] != game_date:
+                continue
+            candidate = aliases.get(norm(row["opponent"]), row["opponent"])
+            score = similarity(candidate, opponent_name)
+            if score >= 0.48 and (best is None or score > best[0]):
+                best = (score, row)
+        if best:
+            match["channel"] = best[1]["channel"]
+            network_key = norm(best[1]["channel"])
+            logo = next((url for name, url in EPG_CHANNEL_LOGOS.items()
+                         if url and (network_key in norm(name) or norm(name) in network_key)), "")
+            if logo:
+                match["channel_logo"] = logo
+            assigned += 1
+            print(f"[Leafs schedule] {match['home']} - {match['away']}: {match['channel']}")
+    print(f"[Leafs schedule] Canal asignado a {assigned}/{len(leafs)} partidos")
+
+
 def xmltv_datetime(value):
     if not value:
         return None
@@ -202,7 +284,8 @@ def read_epg_programmes():
         print(f"[EPG] Descargados {total / 1024 / 1024:.1f} MB")
 
         channels = {}
-        # First pass: channel IDs -> human-readable display names.
+        EPG_CHANNEL_LOGOS.clear()
+        # First pass: channel IDs -> names and logo URLs.
         for _, element in ET.iterparse(temp.name, events=("end",)):
             tag = element.tag.rsplit("}", 1)[-1]
             if tag == "channel":
@@ -212,8 +295,15 @@ def read_epg_programmes():
                     for child in element
                     if child.tag.rsplit("}", 1)[-1] == "display-name" and (child.text or "").strip()
                 ]
+                icons = [
+                    child.attrib.get("src", "").strip()
+                    for child in element
+                    if child.tag.rsplit("}", 1)[-1] == "icon" and child.attrib.get("src")
+                ]
                 if channel_id and names:
-                    channels[channel_id] = names[0]
+                    channels[channel_id] = {"name": names[0], "logo": icons[0] if icons else ""}
+                    if icons:
+                        EPG_CHANNEL_LOGOS[names[0]] = icons[0]
                 element.clear()
             elif tag == "programme":
                 element.clear()
@@ -223,7 +313,9 @@ def read_epg_programmes():
             if element.tag.rsplit("}", 1)[-1] != "programme":
                 continue
             channel_id = element.attrib.get("channel", "")
-            channel_name = channels.get(channel_id, "")
+            channel_info = channels.get(channel_id, {})
+            channel_name = channel_info.get("name", "")
+            channel_logo = channel_info.get("logo", "")
             rank = channel_rank(channel_name)
             if rank is not None:
                 values = {}
@@ -237,6 +329,7 @@ def read_epg_programmes():
                 if start and title:
                     yield {
                         "channel": channel_name,
+                        "channel_logo": channel_logo,
                         "rank": rank,
                         "start": start,
                         "stop": stop,
@@ -277,6 +370,8 @@ def enrich_channels_from_epg(matches):
             # Main Spanish broadcaster first; if tied, choose the strongest team-name match.
             candidates.sort(key=lambda item: (item[0], -item[1]))
             match["channel"] = candidates[0][2]["channel"]
+            if candidates[0][2].get("channel_logo"):
+                match["channel_logo"] = candidates[0][2]["channel_logo"]
             assigned += 1
             print(f"[EPG] {match['home']} - {match['away']}: {match['channel']}")
     print(f"[EPG] Canal principal asignado a {assigned}/{len(football)} partidos")
@@ -289,6 +384,7 @@ def main():
     day_range = f"{first_day:%Y%m%d}-{last_day:%Y%m%d}"
     matches = fetch_football(day_range) + fetch_leafs(day_range)
     enrich_channels_from_epg(matches)
+    enrich_leafs_from_schedule(matches)
 
     filtered = []
     for match in matches:
