@@ -285,17 +285,22 @@ def find_leafs_epg_logo(network):
         compact = re.sub(r"[^a-z0-9]", "", norm(name))
         if not url:
             continue
-        if brand == "tsn4":
-            if "tsn4" in words or compact.startswith("tsn4"):
-                return url
-        elif brand == "sportsnet":
-            if "sportsnet" in words or compact.startswith("sportsnet"):
-                return url
-        elif brand == "prime":
-            # Avoid matching "Primera Federación" as "Prime".
-            if "prime" in words or compact.startswith("primevideo"):
-                return url
-    return ""
+        if brand == "tsn4" and ("tsn4" in words or compact.startswith("tsn4")):
+            return url
+        if brand == "sportsnet" and ("sportsnet" in words or compact.startswith("sportsnet")):
+            return url
+        if brand == "prime" and ("prime" in words or compact.startswith("primevideo")):
+            return url
+
+    # The Spanish XMLTV feed does not carry Canadian broadcaster logos.
+    # Keep its channel logos as the primary source, with these stable
+    # Wikimedia Commons file URLs as NHL-only fallbacks.
+    fallback_logos = {
+        "prime": "https://commons.wikimedia.org/wiki/Special:FilePath/Prime_Video_logo_(2024).svg",
+        "sportsnet": "https://commons.wikimedia.org/wiki/Special:FilePath/Logo_Sportsnet_2011.svg",
+        "tsn4": "https://commons.wikimedia.org/wiki/Special:FilePath/TSN4.svg",
+    }
+    return fallback_logos.get(brand, "")
 
 
 def read_epg_programmes():
