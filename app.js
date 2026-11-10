@@ -15,7 +15,7 @@ function render(){
  const matches=(matchData.matches||[]).filter(m=>m.date===selectedDate).sort((a,b)=>new Date(a.start)-new Date(b.start));
  if(!matches.length){$("matches").innerHTML='<div class="empty">No hay eventos programados para este día.</div>';}
  else $("matches").innerHTML=matches.map(m=>{
-  const live=m.status==="in",done=m.status==="post",time=m.start?timeFmt.format(new Date(m.start)):"— —",channel=m.channel||"Canal por confirmar";
+  const live=m.status==="in",done=m.status==="post",time=m.start?timeFmt.format(new Date(m.start)):"— —",channel=m.channel||(done?"Emisión no disponible":"Canal por confirmar");
   return '<article class="match '+(live?"is-live":"")+'"><div class="kickoff">'+esc(time)+'<small>'+(live?"EN JUEGO":done?"FINAL":" ")+'</small></div><div class="match-body"><div class="teams"><div class="team"><img loading="lazy" src="'+esc(m.home_logo)+'" alt="" onerror="this.hidden=true"><span class="team-name">'+esc(m.home)+'</span></div><span class="vs">VS</span><div class="team away"><img loading="lazy" src="'+esc(m.away_logo)+'" alt="" onerror="this.hidden=true"><span class="team-name">'+esc(m.away)+'</span></div></div><div class="details"><span class="competition">'+esc(m.competition||"")+'</span><span class="channel '+(m.channel?"":"pending")+'">'+esc(channel)+'</span></div></div></article>';
  }).join("");
  $("updated").textContent=matchData.updated_at?"Actualizado "+new Intl.DateTimeFormat("es-ES",{timeZone:"Europe/Madrid",hour:"2-digit",minute:"2-digit"}).format(new Date(matchData.updated_at)):"";
