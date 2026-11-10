@@ -3,28 +3,23 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width,initial-scale=1">
-  <meta name="theme-color" content="#08090d">
-  <title>CartelTV · Mancave</title>
+  <meta name="theme-color" content="#090a0c">
+  <title>CartelTV</title>
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@500;600;700;800;900&family=DM+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&family=Manrope:wght@400;500;600;700;800&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="style.css">
 </head>
 <body>
-  <div class="ambient"></div>
-  <main class="screen">
-    <header class="masthead">
-      <div class="brand"><span class="brand-mark">C</span><span>CARTEL<span class="gold">TV</span></span></div>
-      <div class="masthead-center"><span class="eyebrow">THE PRIVATE SPORTS CINEMA</span><h1>HOY EN EL <span class="gold">MANCAVE</span></h1></div>
-      <div class="today"><span id="weekday">--</span><strong id="date">-- --- ----</strong><small id="updated">Actualizando…</small></div>
+  <main class="page">
+    <header class="topbar">
+      <time id="today"></time>
+      <span class="live-indicator"><i></i> EN CARTELERA</span>
     </header>
-    <section class="ticker"><span class="live-dot"></span><span id="ticker-text">PREPARANDO LA CARTELERA DE HOY</span><span class="ticker-right">SPORTS · LIVE · TONIGHT</span></section>
-    <section class="content">
-      <div class="section-heading"><div><span class="eyebrow">SELECCIÓN DEL DÍA</span><h2>PRÓXIMAS <span class="gold">EMISIONES</span></h2></div><div class="count"><strong id="match-count">0</strong><span>EVENTOS</span></div></div>
-      <div id="matches" class="matches"><div class="empty"><div class="loader"></div><p>CARGANDO CARTELERA</p></div></div>
-      <div id="notice" class="notice" hidden></div>
+    <section id="matches" class="matches" aria-live="polite">
+      <div class="loading"></div>
     </section>
-    <footer><span>CARTELTV <i>·</i> TU SALA DEPORTIVA</span><span>HORARIO PENINSULAR · EUROPE/MADRID</span><span id="refresh-label">ACTUALIZACIÓN AUTOMÁTICA</span></footer>
+    <footer id="updated"></footer>
   </main>
   <script src="app.js"></script>
 </body>
