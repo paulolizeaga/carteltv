@@ -240,12 +240,7 @@ def enrich_leafs_from_schedule(matches):
                 best = (score, row)
         if best:
             match["channel"] = best[1]["channel"]
-            network_key = re.sub(r"\s+", "", norm(best[1]["channel"]))
-            brand_key = "sportsnet" if "sportsnet" in network_key else "tsn" if "tsn" in network_key else network_key
-            logo = next((url for name, url in EPG_CHANNEL_LOGOS.items()
-                         if url and brand_key in re.sub(r"\s+", "", norm(name))
-                         and (not re.search(r"\d", network_key)
-                              or re.search(r"\d", network_key).group() in re.sub(r"\s+", "", norm(name)))), "")
+            logo = find_leafs_epg_logo(best[1]["channel"])
             if logo:
                 match["channel_logo"] = logo
             assigned += 1
@@ -272,6 +267,29 @@ def channel_rank(channel_name):
         if norm(preferred) in key or key in norm(preferred):
             return rank
     return None
+
+def find_leafs_epg_logo(network):
+    """Match the NHL broadcaster against XMLTV display names."""
+    key = re.sub(r"[^a-z0-9]", "", norm(network))
+    if key.startswith("prime"):
+        brand = "prime"
+    elif key.startswith("sportsnet"):
+        brand = "sportsnet"
+    elif key.startswith("tsn"):
+        brand = "tsn4" if re.search(r"tsn\\s*4", norm(network)) else "tsn"
+    else:
+        return ""
+
+    for name, url in EPG_CHANNEL_LOGOS.items():
+        candidate = re.sub(r"[^a-z0-9]", "", norm(name))
+        if not url:
+            continue
+        if brand == "tsn4":
+            if "tsn4" in candidate:
+                return url
+        elif brand in candidate:
+            return url
+    return ""
 
 
 def read_epg_programmes():
