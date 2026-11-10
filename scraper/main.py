@@ -263,15 +263,20 @@ def enrich_channels_from_epg(matches):
 
 def main():
     now = datetime.now(MADRID)
-    day = now.strftime("%Y%m%d")
-    matches = fetch_football(day) + fetch_leafs(day)
+    first_day = now.date() - timedelta(days=7)
+    last_day = now.date() + timedelta(days=14)
+    day_range = f"{first_day:%Y%m%d}-{last_day:%Y%m%d}"
+    matches = fetch_football(day_range) + fetch_leafs(day_range)
     enrich_channels_from_epg(matches)
 
     filtered = []
     for match in matches:
         try:
-            if match.get("start") and datetime.fromisoformat(match["start"].replace("Z", "+00:00")).astimezone(MADRID).date() == now.date():
-                filtered.append(match)
+            if match.get("start"):
+                local_date = datetime.fromisoformat(match["start"].replace("Z", "+00:00")).astimezone(MADRID).date()
+                if first_day <= local_date <= last_day:
+                    match["date"] = local_date.isoformat()
+                    filtered.append(match)
         except ValueError:
             continue
     filtered.sort(key=lambda item: item.get("start") or "")
