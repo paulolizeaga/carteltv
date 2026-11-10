@@ -70,6 +70,27 @@ def get_json(url: str):
     return response.json()
 
 
+def get_scoreboard_events(path, date_filter):
+    """Fetch a scoreboard range, falling back to one request per day if needed."""
+    url = f"{ESPN}/{path}/scoreboard?dates={date_filter}&limit=1000"
+    try:
+        return get_json(url).get("events", [])
+    except Exception:
+        if "-" not in date_filter:
+            raise
+        first, last = (datetime.strptime(part, "%Y%m%d").date() for part in date_filter.split("-", 1))
+        events = []
+        day = first
+        while day <= last:
+            daily_url = f"{ESPN}/{path}/scoreboard?dates={day:%Y%m%d}&limit=100"
+            try:
+                events.extend(get_json(daily_url).get("events", []))
+            except Exception as exc:
+                print(f"[ESPN] {path} {day}: {exc}")
+            day += timedelta(days=1)
+        return events
+
+
 def espn_event(event, label, sport="football"):
     competitions = event.get("competitions") or []
     comp = competitions[0] if competitions else {}
@@ -108,12 +129,12 @@ def fetch_football(day):
     output = []
     for league, label in FOOTBALL.items():
         try:
-            payload = get_json(f"{ESPN}/soccer/{league}/scoreboard?dates={day}&limit=100")
-            for event in payload.get("events", []):
+            events = get_scoreboard_events(f"soccer/{league}", day)
+            for event in events:
                 match = espn_event(event, label)
                 if match:
                     output.append(match)
-            print(f"[ESPN] {label}: {len(payload.get('events', []))}")
+            print(f"[ESPN] {label}: {len(events)}")
         except Exception as exc:
             print(f"[ESPN] {label}: {exc}")
     return output
@@ -121,7 +142,7 @@ def fetch_football(day):
 
 def fetch_leafs(day):
     try:
-        events = get_json(f"{ESPN}/hockey/nhl/scoreboard?dates={day}&limit=100").get("events", [])
+        events = get_scoreboard_events("hockey/nhl", day)
     except Exception as exc:
         print("[NHL]", exc)
         return []
