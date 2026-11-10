@@ -281,14 +281,20 @@ def find_leafs_epg_logo(network):
         return ""
 
     for name, url in EPG_CHANNEL_LOGOS.items():
-        candidate = re.sub(r"[^a-z0-9]", "", norm(name))
+        words = norm(name).split()
+        compact = re.sub(r"[^a-z0-9]", "", norm(name))
         if not url:
             continue
         if brand == "tsn4":
-            if "tsn4" in candidate:
+            if "tsn4" in words or compact.startswith("tsn4"):
                 return url
-        elif brand in candidate:
-            return url
+        elif brand == "sportsnet":
+            if "sportsnet" in words or compact.startswith("sportsnet"):
+                return url
+        elif brand == "prime":
+            # Avoid matching "Primera Federación" as "Prime".
+            if "prime" in words or compact.startswith("primevideo"):
+                return url
     return ""
 
 
@@ -333,11 +339,16 @@ def read_epg_programmes():
                 element.clear()
 
         leafs_logo_channels = [
-            name for name, url in EPG_CHANNEL_LOGOS.items()
-            if url and any(term in norm(name) for term in ("prime", "sportsnet", "tsn"))
+            (name, url) for name, url in EPG_CHANNEL_LOGOS.items()
+            if url and (
+                "sportsnet" in norm(name).split()
+                or "tsn4" in norm(name).split()
+                or "prime" in norm(name).split()
+                or re.sub(r"[^a-z0-9]", "", norm(name)).startswith("primevideo")
+            )
         ]
-        print(f"[EPG NHL] Canales candidatos con logo: {leafs_logo_channels[:80]}")
-        print(f"[EPG NHL] Total candidatos Prime/Sportsnet/TSN: {len(leafs_logo_channels)}")
+        print(f"[EPG NHL] Canales exactos candidatos con logo: {leafs_logo_channels[:100]}")
+        print(f"[EPG NHL] Total candidatos exactos Prime/Sportsnet/TSN4: {len(leafs_logo_channels)}")
 
         # Second pass: only programme rows for our Spanish channel shortlist.
         for _, element in ET.iterparse(temp.name, events=("end",)):
