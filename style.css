@@ -30,3 +30,5 @@ body{min-height:100vh}
 footer{padding-top:12px;border-top:1px solid var(--line);font-size:9px;color:#555c65;text-align:right;min-height:22px}
 @media(max-width:760px){.page{padding:22px 16px 16px}.matches{grid-template-columns:1fr;gap:8px;padding:16px 0}.match{padding:18px 16px}.team-name{font-size:14px}}
 @media(max-width:380px){.match{grid-template-columns:48px minmax(0,1fr);gap:12px}.kickoff{font-size:19px}.team{gap:6px}.team img{width:25px;height:25px}.team-name{font-size:12px}.details{margin-top:12px}.competition,.channel{font-size:9px}}
+
+.day-nav{display:flex;justify-content:center;align-items:center;gap:12px;padding:18px 0 0}.day-nav button{appearance:none;border:1px solid var(--line);background:var(--surface);color:var(--text);border-radius:4px;padding:10px 15px;font:600 11px "DM Sans",sans-serif;cursor:pointer;transition:border-color .2s,color .2s}.day-nav button:hover:not(:disabled){border-color:var(--accent);color:var(--accent)}.day-nav button:disabled{opacity:.3;cursor:not-allowed}.day-nav button[hidden]{display:none}@media(max-width:380px){.day-nav{gap:7px}.day-nav button{padding:9px 10px;font-size:10px}}
